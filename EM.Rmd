@@ -1,0 +1,108 @@
+---
+title: "GMM"
+author: "wangzhuofan"
+date: "2020/4/1"
+output: html_document
+---
+
+
+```{r}
+library(mvtnorm)
+library(rgl)
+d <- 3
+N <- 500
+K <- 2
+N1 <- 100
+N2 <- 400
+mu1 <- c(0,0,-1)
+sigma1 <- diag(3)
+mu2 <- c(5,0,5)
+sigma2 <- matrix(c(1,0.5,0.1,0.5,1,0.2,0.1,0.2,1),ncol = 3)
+G1 <- rmvnorm(N1,mu1,sigma1)
+G2 <- rmvnorm(N2,mu2,sigma2)
+x <- rbind(G1,G2)
+plot3d(x)
+```
+
+
+```{r}
+Estep <- function(x,alpha,mu,sigma){
+  p <- matrix(0,nrow = N,ncol = K)
+  for (i in 1:N) {
+    for (k in 1:K) {
+      p[i,k] <- alpha[k]*dmvnorm(x[i,],mean = mu[k,],sigma = sigma[[k]])
+    }
+  }
+  w <- p/rowSums(p)
+  lpw <- list(p=p,w=w)
+  return(lpw)
+}
+
+```
+
+```{R}
+Mstep <- function(x,w,mu,sigma){
+  N_k <- colSums(w)
+  alpha <- N_k/N
+  for (k in 1:K) {
+    musum <- 0
+    sigsum <- matrix(0,nrow = d,ncol = d)
+    for (i in 1:N) {
+      temp1 <- w[i,k]*x[i,]
+      musum <- musum + temp1
+    }
+    mu[k,] <- (1/N_k[k])*musum
+    for (j in 1:N) {
+      temp2 <- w[j,k]*(x[j,]-mu[k,])%*%t(x[j,]-mu[k,])
+      sigsum <- sigsum + temp2
+    }
+    sigma[[k]] <- (1/N_k[k])*sigsum
+  }
+  lams <- list(alpha=alpha,mu=mu,sigma=sigma)
+  return(lams)
+}
+```
+
+```{r}
+EM <- function(x,K,n,eps){
+  count <- 0
+  d <- ncol(x)
+  N <- nrow(x)
+  #initialize
+  alpha <- rep(1/K,K)
+  mu <- matrix(rnorm(K*d),nrow = K,ncol = d)
+  sigma <- list(diag(d),diag(d))
+  p <- matrix(0,nrow = N,ncol = K)
+  for (i in 1:N) {
+    for (k in 1:K) {
+      p[i,k] <- alpha[k]*dmvnorm(x[i,],mean = mu[k,],sigma = sigma[[k]])
+    }
+  }
+  log <- sum(log(apply(p, 1, sum)))
+  repeat {
+    #E-step
+    w <- Estep(x,alpha,mu,sigma)$w
+    #M-step
+    alpha <- Mstep(x,w,mu,sigma)$alpha
+    mu <- Mstep(x,w,mu,sigma)$mu
+    sigma <- Mstep(x,w,mu,sigma)$sigma
+    #derive the log-likelihood
+    p <- Estep(x,alpha,mu,sigma)$p
+    temp <- sum(log(apply(p, 1, sum)))
+    count <- count+1
+    if(abs(temp-log) < eps){
+      print("converge to the solution!")
+      break
+    }
+    else{
+      log <- temp
+    }
+    if(count>n){
+      print("run out of time!")
+      break
+    }
+  }
+  return(Mstep(x,w,mu,sigma))
+}
+```
+
